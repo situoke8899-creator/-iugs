@@ -1,0 +1,35 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QuantLab Pro · 模拟行情</title><style>
+*{box-sizing:border-box}body{font-family:system-ui,"Microsoft Yahei",sans-serif;background:#0b1220;color:#e5eef9;margin:0}main{max-width:1120px;margin:auto;padding:26px}header{display:flex;align-items:center;justify-content:space-between;gap:16px}h1{font-size:27px}small,.muted{color:#9aacc4}.badge{background:#164b3d;color:#8df0c4;padding:6px 12px;border-radius:20px}.warn{background:#443117;padding:14px;border-radius:10px;margin:18px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:15px}.panel{background:#151f30;border:1px solid #2b3951;padding:18px;border-radius:14px;margin:12px 0}input,select,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #52627b}input,select{background:#0c1524;color:#fff;max-width:100%;margin:5px}button{background:#4389e8;color:white;cursor:pointer;margin:5px}button:disabled{opacity:.4}table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:9px;text-align:left;border-bottom:1px solid #344158;overflow-wrap:anywhere} .scroll{overflow-x:auto} .error{color:#ffacac} a{color:#9acbff}
+</style></head><body><main><header><h1>QuantLab Pro</h1><span class="badge">仅模拟交易</span></header>
+<div class="warn">实时链上报价查询 + 浏览器本地虚拟交易。当前不支持全天候挂机、实盘钱包签名、自动跟单或训练型 AI。风险初筛不能保证新币安全。</div>
+<div class="grid"><section class="panel"><small>虚拟 USDT 余额</small><h2 id="cash">—</h2></section><section class="panel"><small>已记录模拟交易</small><h2 id="count">—</h2></section></div>
+<section class="panel"><h2>多链新币发现</h2><select id="chain"><option value="bsc">BNB Chain</option><option value="ethereum">Ethereum</option><option value="solana">Solana</option></select><button id="discover">查询近期代币</button><div class="muted">公开发现接口并非完整新池监控。</div><div id="found" class="scroll"></div></section>
+<section class="panel"><h2>代币查询与初步风险检测</h2><input id="address" style="width:470px" placeholder="输入代币合约地址"><button id="lookup">查询行情</button><button id="risk">风险初筛</button><div id="result" class="scroll"></div><div id="riskresult"></div></section>
+<section class="panel"><h2>模拟交易</h2><div class="muted">先查询代币行情，再使用最新查询报价模拟买卖；滑点和手续费仅按假设计算，不代表真实可成交价。</div><input type="number" id="usd" min="1" max="1000" value="100" step="1"> USDT <button id="buy">模拟买入</button><button id="sell">模拟卖出（按输入 USDT 市值）</button><button id="reset">清空本机模拟数据</button><div id="msg"></div></section>
+<section class="panel"><h2>模拟持仓</h2><div id="positions" class="scroll"></div></section><section class="panel"><h2>最近交易</h2><div id="orders" class="scroll"></div></section>
+<footer class="muted">数据来自第三方公共接口；数据可能延迟或不可用。本地模拟记录仅保存在当前浏览器，不会跨设备同步。</footer></main>
+<script>
+const $=id=>document.getElementById(id),key="quantlab_vercel_paper_v1";let state,selected=null;
+try{state=JSON.parse(localStorage.getItem(key))}catch(e){}
+if(!state||!Number.isFinite(state.cash)||!Array.isArray(state.orders)||typeof state.positions!=="object")state={cash:10000,positions:{},orders:[]};
+function save(){localStorage.setItem(key,JSON.stringify(state));render()}
+function fmt(x){return Number(x).toLocaleString("en-US",{maximumFractionDigits:6})}
+function render(){
+$("cash").textContent=fmt(state.cash)+" U";$("count").textContent=state.orders.length;
+$("positions").innerHTML="<table><tr><th>网络/币种</th><th>地址</th><th>数量</th><th>成本(U)</th></tr>"+Object.values(state.positions).filter(p=>p.qty>1e-12).map(p=>`<tr><td>${esc(p.chain)} / ${esc(p.symbol)}</td><td>${esc(p.address)}</td><td>${fmt(p.qty)}</td><td>${fmt(p.cost)}</td></tr>`).join("")+"</table>";
+$("orders").innerHTML="<table><tr><th>时间</th><th>币种</th><th>操作</th><th>数量</th><th>价格</th><th>手续费</th></tr>"+state.orders.slice(-30).reverse().map(o=>`<tr><td>${esc(o.ts)}</td><td>${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${fmt(o.qty)}</td><td>${fmt(o.price)}</td><td>${fmt(o.fee)}</td></tr>`).join("")+"</table>";
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+async function get(url){let r=await fetch(url);let x=await r.json();if(!r.ok)throw Error(x.detail||"查询失败");return x}
+function showError(e){$("msg").textContent=String(e.message||e);$("msg").className="error"}
+$("discover").onclick=async()=>{try{$("found").textContent="查询中...";let data=await get("/api/discover?chain="+$("chain").value);$("found").innerHTML=data.map(x=>`<p><button data-token="${esc(x.token)}" class="pick">选择</button> ${esc(x.token)}</p>`).join("")||"暂无发现结果";document.querySelectorAll(".pick").forEach(b=>b.onclick=()=>{$("address").value=b.dataset.token;$("lookup").click()})}catch(e){$("found").textContent=e.message}};
+$("lookup").onclick=async()=>{try{selected=null;$("result").textContent="查询中...";let chain=$("chain").value,address=$("address").value.trim();let d=await get("/api/token?chain="+encodeURIComponent(chain)+"&address="+encodeURIComponent(address));if(!d.pairs.length){$("result").textContent="未找到交易池";return}let p=d.pairs[0];selected={...p,chain,price:Number(p.price),checked:d.checked_at};$("result").innerHTML=`<p><b>${esc(p.symbol)}</b> | ${esc(p.name)} | 报价 $${fmt(p.price)}</p><p>合约：${esc(p.address)} | DEX: ${esc(p.dex)}</p><p>流动性：$${fmt(p.liquidity)} | 24h 成交量：$${fmt(p.volume24)}</p><p><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">查看交易池</a></p><small>报价获取时间：${new Date(d.checked_at*1000).toLocaleString()}</small>`}catch(e){$("result").textContent=e.message}};
+$("risk").onclick=async()=>{try{$("riskresult").textContent="检测中...";let d=await get("/api/risk?chain="+encodeURIComponent($("chain").value)+"&address="+encodeURIComponent($("address").value.trim()));$("riskresult").textContent=JSON.stringify(d,null,2)}catch(e){$("riskresult").textContent=e.message}};
+function order(side){try{if(!selected||selected.chain!==$("chain").value||$("address").value.trim()!==selected.address)throw Error("请先查询当前币种行情");if(Date.now()/1000-selected.checked>60)throw Error("报价超过60秒，请重新查询");let usd=Number($("usd").value);if(!Number.isFinite(usd)||usd<1||usd>1000)throw Error("每笔模拟金额限 1–1000 U");let fee=usd*.0015,slip=.003,key=selected.chain+":"+selected.address,p=state.positions[key]||{chain:selected.chain,address:selected.address,symbol:selected.symbol,qty:0,cost:0};let qty,price;
+if(side==="买入"){if(state.cash<usd+fee)throw Error("虚拟余额不足");price=selected.price*(1+slip);qty=usd/price;state.cash-=usd+fee;p.cost+=usd+fee;p.qty+=qty}
+else{price=selected.price*(1-slip);qty=usd/price;if(qty>p.qty+1e-10)throw Error("该币种模拟持仓不足");state.cash+=usd-fee;p.cost=p.qty>0?p.cost*Math.max(0,p.qty-qty)/p.qty:0;p.qty=Math.max(0,p.qty-qty)}
+state.positions[key]=p;state.orders.push({ts:new Date().toLocaleString(),symbol:selected.symbol,side,qty,price,fee});save();$("msg").className="";$("msg").textContent="模拟"+side+"完成"}catch(e){showError(e)}}
+$("buy").onclick=()=>order("买入");$("sell").onclick=()=>order("卖出");
+$("reset").onclick=()=>{if(confirm("确定清空此浏览器中的全部模拟数据？")){localStorage.removeItem(key);location.reload()}};
+render();
+</script></body></html>
