@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      QUANT_ADMIN_TOKEN: ${QUANT_ADMIN_TOKEN:?Set a long random token in .env}
+      QUANT_WORKER: '1'
+      QUANT_DB: /data/quantlab.db
+    volumes: [quant_data:/data]
+    expose: ['8000']
+  dashboard:
+    build: .
+    restart: unless-stopped
+    command: streamlit run dashboard.py --server.address 0.0.0.0 --server.port 8501
+    environment:
+      QUANT_ADMIN_TOKEN: ${QUANT_ADMIN_TOKEN:?Set a long random token in .env}
+      QUANT_API_URL: http://api:8000
+    ports: ['127.0.0.1:8501:8501']
+    depends_on: [api]
+volumes:
+  quant_data:
